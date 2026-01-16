@@ -1,0 +1,48 @@
+name: juju-lxd-ubuntu
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show runner context
+        run: |
+          whoami
+          hostname
+          juju version
+          juju controllers
+          juju models
+
+      - name: Compute model name from branch
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          # 1 branch = 1 model (estable)
+          MODEL="ci-${BRANCH//[^a-zA-Z0-9-]/-}"
+          echo "MODEL=$MODEL" >> "$GITHUB_ENV"
+          echo "Using model: $MODEL"
+
+      - name: Create or switch model
+        run: |
+          juju add-model "$MODEL" || true
+          juju switch "$MODEL"
+          juju status
+
+      - name: Deploy Ubuntu (idempotent)
+        run: |
+          juju switch "$MODEL"
+          # Si ya existe, este paso no debe romper
+          juju deploy ubuntu --constraints "arch=arm64" || true
+          juju wait-for application ubuntu --timeout=30m
+          juju status
+
+      - name: Show unit/machine details
+        run: |
+          juju switch "$MODEL"
+          juju status --format=short
+
